@@ -1,0 +1,9 @@
+{
+    "127.0.0.1": {
+        "count": 3243,
+        "last_seen": "2025-05-06 12:56:43",
+        "status": "active",
+        "expires": "Never",
+        "reason": "Security violation"
+    }
+}

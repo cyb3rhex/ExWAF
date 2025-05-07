@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExWAF Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --success-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #1abc9c;
+            --dark-color: #2c3e50;
+            --light-color: #ecf0f1;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .dashboard-header {
+            background-color: var(--dark-color);
+            color: white;
+            padding: 15px 0;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        
+        .card {
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            border: none;
+        }
+        
+        .card-header {
+            border-radius: 8px 8px 0 0 !important;
+            font-weight: 600;
+            padding: 12px 20px;
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+            color: white;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card i {
+            font-size: 48px;
+            opacity: 0.2;
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+        }
+        
+        .stat-card.primary { background-color: var(--primary-color); }
+        .stat-card.danger { background-color: var(--danger-color); }
+        .stat-card.warning { background-color: var(--warning-color); }
+        .stat-card.success { background-color: var(--success-color); }
+        
+        .stat-card .stat-value {
+            font-size: 28px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-card .stat-label {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .table-responsive {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .table {
+            margin-bottom: 0;
+        }
+        
+        .table th {
+            background-color: var(--dark-color);
+            color: white;
+            border: none;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 50px;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
+        .status-badge.active {
+            background-color: var(--danger-color);
+            color: white;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-header">
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="logo">
+                    <i class="fas fa-shield-alt me-2"></i> ExWAF Dashboard
+                </div>
+                <div>
+                    <button class="btn btn-sm btn-outline-light ms-2" id="refresh-btn">
+                        <i class="fas fa-sync-alt"></i> Refresh Data
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Stats Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stat-card primary">
+                    <div class="stat-label">Total Requests</div>
+                    <div class="stat-value" id="total-requests">{{ stats.total_requests }}</div>
+                    <i class="fas fa-globe"></i>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card danger">
+                    <div class="stat-label">Blocked Attacks</div>
+                    <div class="stat-value" id="blocked-attacks">{{ stats.blocked_requests }}</div>
+                    <i class="fas fa-ban"></i>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card warning">
+                    <div class="stat-label">XSS Attacks</div>
+                    <div class="stat-value" id="xss-attacks">{{ stats.xss_attempts }}</div>
+                    <i class="fas fa-code"></i>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card success">
+                    <div class="stat-label">SQL Injections</div>
+                    <div class="stat-value" id="sql-attacks">{{ stats.sql_attacks }}</div>
+                    <i class="fas fa-database"></i>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Attack Distribution -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-danger text-white">
+                        <i class="fas fa-chart-pie me-2"></i> Attack Distribution
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-container">
+                            <canvas id="attack-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Blocked IPs -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-danger text-white">
+                        <i class="fas fa-ban me-2"></i> Blocked IPs
+                        <div class="float-end">
+                            <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#blockIpModal">
+                                <i class="fas fa-plus"></i> Block IP
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>IP Address</th>
+                                        <th>Status</th>
+                                        <th>Expires</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="blocked-ips">
+                                    {% for ip, data in blocked_ips.items() %}
+                                    <tr>
+                                        <td>{{ ip }}</td>
+                                        <td>
+                                            <span class="status-badge {{ data.status }}">
+                                                {{ data.status|title }}
+                                            </span>
+                                        </td>
+                                        <td>{{ data.expires }}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-danger btn-action unblock-ip" data-ip="{{ ip }}">
+                                                <i class="fas fa-unlock"></i> Unblock
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Recent Events -->
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header bg-info text-white">
+                        <i class="fas fa-list-alt me-2"></i> Recent Security Events
+                        <div class="float-end">
+                            <button class="btn btn-sm btn-outline-light" id="clear-log-btn">
+                                <i class="fas fa-trash"></i> Clear Log
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Level</th>
+                                        <th>IP</th>
+                                        <th>Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-events">
+                                    {% for event in stats.recent_events %}
+                                    <tr>
+                                        <td>{{ event.timestamp }}</td>
+                                        <td>
+                                            <span class="badge {% if event.level == 'WARNING' %}bg-warning{% elif event.level == 'ERROR' %}bg-danger{% else %}bg-info{% endif %}">
+                                                {{ event.level }}
+                                            </span>
+                                        </td>
+                                        <td>{{ event.ip }}</td>
+                                        <td>{{ event.message }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Block IP Modal -->
+    <div class="modal fade" id="blockIpModal" tabindex="-1" aria-labelledby="blockIpModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="blockIpModalLabel"><i class="fas fa-ban me-2"></i> Block IP Address</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="block-ip-form">
+                        <div class="mb-3">
+                            <label for="ip-address" class="form-label">IP Address</label>
+                            <input type="text" class="form-control" id="ip-address" name="ip" placeholder="e.g. 192.168.1.1" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="block-duration" class="form-label">Block Duration</label>
+                            <select class="form-select" id="block-duration" name="duration">
+                                <option value="1">1 hour</option>
+                                <option value="24">24 hours</option>
+                                <option value="168">7 days</option>
+                                <option value="720">30 days</option>
+                                <option value="permanent">Permanent</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="submit-block-ip">Block IP</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get initial data from DOM
+            const xssAttacks = parseInt(document.getElementById('xss-attacks').textContent) || 0;
+            const sqlAttacks = parseInt(document.getElementById('sql-attacks').textContent) || 0;
+            const rateLimited = 0; // Initialize to 0, will be updated via API
+            
+            // Attack Distribution Chart
+            const attackChart = new Chart(
+                document.getElementById('attack-chart'),
+                {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['XSS Attacks', 'SQL Injections', 'Rate Limited'],
+                        datasets: [{
+                            data: [xssAttacks, sqlAttacks, rateLimited],
+                            backgroundColor: [
+                                '#e74c3c',
+                                '#f39c12',
+                                '#1abc9c'
+                            ],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom'
+                            }
+                        }
+                    }
+                }
+            );
+            
+            // Manual refresh button
+            document.getElementById('refresh-btn').addEventListener('click', refreshData);
+            
+            // Function to refresh data
+            function refreshData() {
+                fetch('/api/stats')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update stats
+                        document.getElementById('total-requests').textContent = data.total_requests;
+                        document.getElementById('blocked-attacks').textContent = data.blocked_requests;
+                        document.getElementById('xss-attacks').textContent = data.xss_attempts;
+                        document.getElementById('sql-attacks').textContent = data.sql_attacks;
+                        
+                        // Update attack chart
+                        attackChart.data.datasets[0].data = [
+                            data.xss_attempts, 
+                            data.sql_attacks, 
+                            data.rate_limited
+                        ];
+                        attackChart.update();
+                        
+                        // Update recent events
+                        updateRecentEvents(data.recent_events);
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing data:', error);
+                    });
+                
+                // Refresh blocked IPs
+                fetch('/api/blocked')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateBlockedIps(data);
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing blocked IPs:', error);
+                    });
+            }
+            
+            function updateRecentEvents(events) {
+                const recentEventsTable = document.getElementById('recent-events');
+                recentEventsTable.innerHTML = '';
+                
+                events.forEach(event => {
+                    const row = document.createElement('tr');
+                    let badgeClass = 'bg-info';
+                    if (event.level === 'WARNING') {
+                        badgeClass = 'bg-warning';
+                    } else if (event.level === 'ERROR') {
+                        badgeClass = 'bg-danger';
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${event.timestamp}</td>
+                        <td><span class="badge ${badgeClass}">${event.level}</span></td>
+                        <td>${event.ip}</td>
+                        <td>${event.message}</td>
+                    `;
+                    recentEventsTable.appendChild(row);
+                });
+            }
+            
+            function updateBlockedIps(ips) {
+                const blockedIpsTable = document.getElementById('blocked-ips');
+                blockedIpsTable.innerHTML = '';
+                
+                for (const [ip, ipData] of Object.entries(ips)) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${ip}</td>
+                        <td><span class="status-badge ${ipData.status}">${ipData.status.charAt(0).toUpperCase() + ipData.status.slice(1)}</span></td>
+                        <td>${ipData.expires}</td>
+                        <td>
+                            <button class="btn btn-sm btn-danger btn-action unblock-ip" data-ip="${ip}">
+                                <i class="fas fa-unlock"></i> Unblock
+                            </button>
+                        </td>
+                    `;
+                    blockedIpsTable.appendChild(row);
+                }
+                
+                // Re-attach event listeners for unblock buttons
+                attachUnblockListeners();
+            }
+            
+            // Block IP form submit
+            document.getElementById('submit-block-ip').addEventListener('click', function() {
+                const form = document.getElementById('block-ip-form');
+                const formData = new FormData(form);
+                
+                fetch('/block-ip', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Close modal
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('blockIpModal'));
+                        modal.hide();
+                        
+                        // Refresh data
+                        refreshData();
+                        
+                        // Reset form
+                        form.reset();
+                    } else {
+                        alert('Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error blocking IP:', error);
+                    alert('An error occurred while trying to block the IP');
+                });
+            });
+            
+            // Function to attach unblock event listeners
+            function attachUnblockListeners() {
+                document.querySelectorAll('.unblock-ip').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const ip = this.getAttribute('data-ip');
+                        
+                        if (confirm(`Are you sure you want to unblock IP ${ip}?`)) {
+                            const formData = new FormData();
+                            formData.append('ip', ip);
+                            
+                            fetch('/unblock-ip', {
+                                method: 'POST',
+                                body: formData
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    refreshData();
+                                } else {
+                                    alert('Error: ' + data.message);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error unblocking IP:', error);
+                                alert('An error occurred while trying to unblock the IP');
+                            });
+                        }
+                    });
+                });
+            }
+            
+            // Initial attachment of unblock listeners
+            attachUnblockListeners();
+            
+            // Clear log button
+            document.getElementById('clear-log-btn').addEventListener('click', function() {
+                if (confirm('Are you sure you want to clear the log file? This action cannot be undone.')) {
+                    fetch('/clear-log', {
+                        method: 'POST'
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            refreshData();
+                        } else {
+                            alert('Error: ' + data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error clearing log:', error);
+                        alert('An error occurred while trying to clear the log');
+                    });
+                }
+            });
+            
+            // Set up auto-refresh every 30 seconds
+            setInterval(refreshData, parseInt('{{ refresh_interval|default(30) }}') * 1000);
+        });
+    </script>
+</body>
+</html> 
